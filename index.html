@@ -1,41 +1,37 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Camera Permission Test</title>
+    <title>Permission-Based Content</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <style>
-        body { 
-            font-family: Arial, sans-serif; 
-            text-align: center; 
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
             padding: 20px;
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             color: white;
             min-height: 100vh;
         }
         .container {
-            max-width: 500px;
-            margin: 0 auto;
-            background: rgba(255,255,255,0.1);
+            background: rgba(255, 255, 255, 0.1);
             padding: 30px;
             border-radius: 15px;
             backdrop-filter: blur(10px);
+            text-align: center;
         }
-        video { 
-            width: 100%; 
-            max-width: 300px; 
-            border: 3px solid white;
-            border-radius: 10px;
+        .permission-gate {
             margin: 20px 0;
         }
-        button { 
-            padding: 12px 24px; 
-            font-size: 16px; 
+        button {
+            padding: 15px 30px;
             margin: 10px;
             background: #4CAF50;
             color: white;
             border: none;
             border-radius: 25px;
             cursor: pointer;
+            font-size: 16px;
             transition: all 0.3s;
         }
         button:hover {
@@ -46,124 +42,250 @@
             background: #cccccc;
             cursor: not-allowed;
         }
+        .hidden-content {
+            display: none;
+            margin-top: 30px;
+            padding: 20px;
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 10px;
+            border-left: 5px solid #4CAF50;
+        }
         .status {
-            margin: 15px 0;
+            margin: 10px 0;
             padding: 10px;
             border-radius: 5px;
-            background: rgba(0,0,0,0.3);
+        }
+        .granted {
+            background: rgba(76, 175, 80, 0.3);
+            color: #4CAF50;
+        }
+        .pending {
+            background: rgba(255, 193, 7, 0.3);
+            color: #ffc107;
+        }
+        .denied {
+            background: rgba(244, 67, 54, 0.3);
+            color: #f44336;
+        }
+        .secret-sentence {
+            font-size: 24px;
+            font-weight: bold;
+            margin: 30px 0;
+            padding: 20px;
+            background: rgba(0, 0, 0, 0.5);
+            border-radius: 10px;
+            border: 2px solid gold;
         }
     </style>
 </head>
 <body>
     <div class="container">
-        <h1>📷 Camera Access Test</h1>
-        <p>This is a legitimate test of browser camera permissions for educational purposes.</p>
+        <h1>🔒 Permission-Based Content</h1>
+        <p>Grant permissions to unlock the secret sentence</p>
         
-        <div class="status" id="status">Click "Start Camera" to begin</div>
-        
-        <video id="webcam" autoplay muted playsinline></video>
-        <br>
-        
-        <button onclick="startCamera()" id="startBtn">Start Camera</button>
-        <button onclick="stopCamera()" id="stopBtn" disabled>Stop Camera</button>
-        <button onclick="switchCamera()" id="switchBtn" disabled>Switch Camera</button>
-        
-        <div style="margin-top: 20px; font-size: 14px;">
-            <p>This demonstrates how legitimate websites request camera access.</p>
-            <p>You will see a permission prompt when clicking "Start Camera".</p>
+        <!-- Permission Status -->
+        <div class="permission-gate">
+            <div class="status" id="cameraStatus">📷 Camera: Waiting for permission</div>
+            <div class="status" id="micStatus">🎤 Microphone: Waiting for permission</div>
+            <div class="status" id="gpsStatus">📍 GPS Location: Waiting for permission</div>
+        </div>
+
+        <!-- Request Permissions Button -->
+        <button onclick="requestAllPermissions()" id="requestBtn">
+            🔓 Request Permissions
+        </button>
+
+        <!-- Hidden Content -->
+        <div id="hiddenContent" class="hidden-content">
+            <h2>✅ Congratulations! Access Granted</h2>
+            <p>You've granted all required permissions. Here's your secret sentence:</p>
+            
+            <div class="secret-sentence" id="secretSentence">
+                🚀 THE EAGLE LANDS AT MIDNIGHT WHEN THE MOON IS FULL 🚀
+            </div>
+
+            <div id="userData">
+                <!-- Will show user's location data -->
+            </div>
+
+            <video id="webcam" autoplay muted playsinline width="300" style="border-radius: 10px; margin: 10px;"></video>
+            
+            <br>
+            <button onclick="revokePermissions()">🔐 Lock Content</button>
         </div>
     </div>
-    
+
     <script>
-        let currentStream = null;
-        let usingFrontCamera = true;
-        
-        function updateStatus(message, isError = false) {
-            const status = document.getElementById('status');
-            status.textContent = message;
-            status.style.background = isError ? 'rgba(255,0,0,0.3)' : 'rgba(0,0,0,0.3)';
+        let cameraStream = null;
+        let permissionsGranted = {
+            camera: false,
+            microphone: false,
+            gps: false
+        };
+
+        function updateStatus() {
+            const cameraStatus = document.getElementById('cameraStatus');
+            const micStatus = document.getElementById('micStatus');
+            const gpsStatus = document.getElementById('gpsStatus');
+            const hiddenContent = document.getElementById('hiddenContent');
+            const requestBtn = document.getElementById('requestBtn');
+
+            // Update status displays
+            cameraStatus.textContent = `📷 Camera: ${permissionsGranted.camera ? '✅ Granted' : '❌ Not Granted'}`;
+            cameraStatus.className = `status ${permissionsGranted.camera ? 'granted' : 'denied'}`;
+
+            micStatus.textContent = `🎤 Microphone: ${permissionsGranted.microphone ? '✅ Granted' : '❌ Not Granted'}`;
+            micStatus.className = `status ${permissionsGranted.microphone ? 'granted' : 'denied'}`;
+
+            gpsStatus.textContent = `📍 GPS: ${permissionsGranted.gps ? '✅ Granted' : '❌ Not Granted'}`;
+            gpsStatus.className = `status ${permissionsGranted.gps ? 'granted' : 'denied'}`;
+
+            // Show/hide content based on permissions
+            const allGranted = permissionsGranted.camera && permissionsGranted.microphone && permissionsGranted.gps;
+            
+            if (allGranted) {
+                hiddenContent.style.display = 'block';
+                requestBtn.style.display = 'none';
+                showUserData();
+                startCamera();
+            } else {
+                hiddenContent.style.display = 'none';
+                requestBtn.style.display = 'block';
+                stopCamera();
+            }
         }
-        
+
+        async function requestAllPermissions() {
+            try {
+                // Request Camera Permission
+                try {
+                    const cameraStream = await navigator.mediaDevices.getUserMedia({ video: true });
+                    permissionsGranted.camera = true;
+                    cameraStream.getTracks().forEach(track => track.stop()); // Stop immediately after check
+                } catch (error) {
+                    permissionsGranted.camera = false;
+                    console.log('Camera permission denied');
+                }
+
+                // Request Microphone Permission
+                try {
+                    const micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                    permissionsGranted.microphone = true;
+                    micStream.getTracks().forEach(track => track.stop()); // Stop immediately after check
+                } catch (error) {
+                    permissionsGranted.microphone = false;
+                    console.log('Microphone permission denied');
+                }
+
+                // Request GPS Permission
+                try {
+                    const position = await new Promise((resolve, reject) => {
+                        navigator.geolocation.getCurrentPosition(resolve, reject, {
+                            enableHighAccuracy: true,
+                            timeout: 5000,
+                            maximumAge: 0
+                        });
+                    });
+                    permissionsGranted.gps = true;
+                    // Store location data for display
+                    localStorage.setItem('userLocation', JSON.stringify({
+                        lat: position.coords.latitude,
+                        lon: position.coords.longitude,
+                        accuracy: position.coords.accuracy
+                    }));
+                } catch (error) {
+                    permissionsGranted.gps = false;
+                    console.log('GPS permission denied');
+                }
+
+                updateStatus();
+
+            } catch (error) {
+                console.error('Permission request error:', error);
+            }
+        }
+
         function startCamera() {
-            stopCamera(); // Stop any existing stream
-            
-            const constraints = {
-                video: { 
-                    width: { ideal: 1280 },
-                    height: { ideal: 720 },
-                    facingMode: usingFrontCamera ? 'user' : 'environment'
-                },
-                audio: false 
-            };
-            
-            updateStatus('Requesting camera access...');
-            
-            navigator.mediaDevices.getUserMedia(constraints)
-            .then(stream => {
-                currentStream = stream;
-                const videoElement = document.getElementById('webcam');
-                videoElement.srcObject = stream;
-                
-                updateStatus('Camera active! ✅');
-                
-                // Enable/disable buttons
-                document.getElementById('startBtn').disabled = true;
-                document.getElementById('stopBtn').disabled = false;
-                document.getElementById('switchBtn').disabled = false;
-            })
-            .catch(error => {
-                console.error('Error accessing camera:', error);
-                let errorMessage = 'Cannot access camera: ';
-                
-                if (error.name === 'NotAllowedError') {
-                    errorMessage += 'Permission denied by user';
-                } else if (error.name === 'NotFoundError') {
-                    errorMessage += 'No camera found';
-                } else if (error.name === 'NotSupportedError') {
-                    errorMessage += 'HTTPS required (this page is on HTTPS)';
-                } else {
-                    errorMessage += error.message;
-                }
-                
-                updateStatus(errorMessage, true);
-            });
+            if (permissionsGranted.camera) {
+                navigator.mediaDevices.getUserMedia({ video: true })
+                    .then(stream => {
+                        cameraStream = stream;
+                        document.getElementById('webcam').srcObject = stream;
+                    })
+                    .catch(error => {
+                        console.log('Error accessing camera:', error);
+                    });
+            }
         }
-        
+
         function stopCamera() {
-            if (currentStream) {
-                currentStream.getTracks().forEach(track => track.stop());
+            if (cameraStream) {
+                cameraStream.getTracks().forEach(track => track.stop());
                 document.getElementById('webcam').srcObject = null;
-                currentStream = null;
-                
-                updateStatus('Camera stopped');
-                
-                // Enable/disable buttons
-                document.getElementById('startBtn').disabled = false;
-                document.getElementById('stopBtn').disabled = true;
-                document.getElementById('switchBtn').disabled = true;
+                cameraStream = null;
             }
         }
-        
-        function switchCamera() {
-            usingFrontCamera = !usingFrontCamera;
-            updateStatus('Switching camera...');
-            startCamera(); // Restart with new camera
+
+        function showUserData() {
+            const userDataDiv = document.getElementById('userData');
+            
+            // Show GPS data if available
+            const locationData = localStorage.getItem('userLocation');
+            if (locationData) {
+                const loc = JSON.parse(locationData);
+                userDataDiv.innerHTML = `
+                    <h3>📍 Your Location Data:</h3>
+                    <p>Latitude: ${loc.lat.toFixed(6)}</p>
+                    <p>Longitude: ${loc.lon.toFixed(6)}</p>
+                    <p>Accuracy: ±${loc.accuracy.toFixed(2)} meters</p>
+                    <p><em>This data is stored locally and not sent anywhere</em></p>
+                `;
+            }
         }
-        
-        // Stop camera when page closes
-        window.addEventListener('beforeunload', stopCamera);
-        
-        // Add keyboard shortcuts
-        document.addEventListener('keydown', (e) => {
-            if (e.key === ' ') { // Spacebar to start/stop
-                e.preventDefault();
-                if (currentStream) {
-                    stopCamera();
-                } else {
-                    startCamera();
+
+        function revokePermissions() {
+            permissionsGranted = {
+                camera: false,
+                microphone: false,
+                gps: false
+            };
+            localStorage.removeItem('userLocation');
+            stopCamera();
+            updateStatus();
+        }
+
+        // Check existing permissions on page load
+        async function checkExistingPermissions() {
+            try {
+                // Check camera permission
+                const cameraPermission = await navigator.permissions.query({ name: 'camera' });
+                permissionsGranted.camera = cameraPermission.state === 'granted';
+
+                // Check microphone permission  
+                const micPermission = await navigator.permissions.query({ name: 'microphone' });
+                permissionsGranted.microphone = micPermission.state === 'granted';
+
+                // Check geolocation permission
+                const geoPermission = await navigator.permissions.query({ name: 'geolocation' });
+                permissionsGranted.gps = geoPermission.state === 'granted';
+
+                updateStatus();
+
+                // If permissions already granted, show content immediately
+                if (permissionsGranted.camera && permissionsGranted.microphone && permissionsGranted.gps) {
+                    requestAllPermissions(); // This will activate camera and get location
                 }
+
+            } catch (error) {
+                console.log('Permission query not supported in this browser');
             }
-        });
+        }
+
+        // Initialize on page load
+        window.addEventListener('load', checkExistingPermissions);
+
+        // Clean up on page unload
+        window.addEventListener('beforeunload', stopCamera);
     </script>
 </body>
 </html>
